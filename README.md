@@ -14,6 +14,8 @@ rapidly bursts toward the camera. The portal completes and the player respawns
 as the vanilla totem activation finishes. The
 transition hides the HUD and briefly applies blindness. If the player respawns
 beside their bed, the camera fades in with a short waking-up and getting-out motion.
+It begins at mattress height looking down, sits upright, turns toward the side of
+the bed, and rises into the normal standing camera position.
 
 ## Crafting
 

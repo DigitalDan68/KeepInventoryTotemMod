@@ -10,12 +10,16 @@ import net.minecraft.client.gui.screens.DeathScreen;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.BedBlock;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.BedPart;
+import net.minecraft.world.phys.Vec3;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -32,7 +36,7 @@ public final class KeepingDeathAnimation {
     private static final int CRACK_END = 20;
     private static final int PORTAL_END = 31;
     private static final int ANIMATION_END = 40;
-    private static final int WAKE_ANIMATION_END = 36;
+    private static final int WAKE_ANIMATION_END = 52;
     private static final float[] FRACTURE_ANGLES = {
             -168.0F, -132.0F, -101.0F, -67.0F, -31.0F, 7.0F, 43.0F, 79.0F, 116.0F, 151.0F
     };
@@ -49,6 +53,7 @@ public final class KeepingDeathAnimation {
     private static int animationTick;
     private static boolean wakeActive;
     private static int wakeTick;
+    private static BedWake bedWake;
     private static float activationOffsetX;
     private static float activationOffsetY;
 
@@ -67,7 +72,8 @@ public final class KeepingDeathAnimation {
             hadTotem = hasTotem(minecraft.player.getInventory());
             if (awaitingRespawn) {
                 awaitingRespawn = false;
-                if (isNextToBed(minecraft)) {
+                bedWake = findNearbyBed(minecraft);
+                if (bedWake != null) {
                     wakeActive = true;
                     wakeTick = 0;
                 }
@@ -358,9 +364,19 @@ public final class KeepingDeathAnimation {
                 0.0F,
                 1.0F
         ));
-        event.setRoll(Mth.lerp(progress, 82.0F, 0.0F));
-        event.setPitch(Mth.lerp(progress, 28.0F, event.getPitch()));
-        event.setYaw(event.getYaw() + Mth.sin(progress * Mth.PI) * 9.0F);
+        float sitProgress = ease(Mth.clamp(progress / 0.42F, 0.0F, 1.0F));
+        float turnProgress = ease(Mth.clamp((progress - 0.42F) / 0.28F, 0.0F, 1.0F));
+        float standProgress = ease(Mth.clamp((progress - 0.70F) / 0.30F, 0.0F, 1.0F));
+        float bedYaw = bedWake.facing().toYRot() - 180.0F;
+        float sideYaw = bedWake.exitSide().toYRot() - 180.0F;
+
+        event.setRoll(Mth.lerp(sitProgress, 7.0F, 0.0F));
+        event.setPitch(progress < 0.42F
+                ? Mth.lerp(sitProgress, 78.0F, 4.0F)
+                : Mth.lerp(standProgress, 4.0F, event.getPitch()));
+        event.setYaw(progress < 0.42F
+                ? bedYaw
+                : Mth.lerp(standProgress, Mth.lerp(turnProgress, bedYaw, sideYaw), event.getYaw()));
     }
 
     private static void renderWakeOverlay(RenderGuiEvent.Pre event) {
@@ -377,18 +393,48 @@ public final class KeepingDeathAnimation {
         event.setCanceled(true);
     }
 
-    private static boolean isNextToBed(Minecraft minecraft) {
+    public static Vec3 getBedWakeCameraPosition(Vec3 standingPosition, float partialTick) {
+        if (!wakeActive || bedWake == null) {
+            return null;
+        }
+
+        float progress = Mth.clamp((wakeTick + partialTick) / WAKE_ANIMATION_END, 0.0F, 1.0F);
+        Vec3 lying = Vec3.atBottomCenterOf(bedWake.headPosition()).add(0.0, 0.72, 0.0);
+        Vec3 seated = lying.add(0.0, 0.78, 0.0);
+        Vec3 besideBed = seated.add(
+                bedWake.exitSide().getStepX() * 0.72,
+                0.0,
+                bedWake.exitSide().getStepZ() * 0.72
+        );
+
+        if (progress < 0.42F) {
+            return lying.lerp(seated, ease(progress / 0.42F));
+        }
+        if (progress < 0.70F) {
+            return seated.lerp(besideBed, ease((progress - 0.42F) / 0.28F));
+        }
+        return besideBed.lerp(standingPosition, easeOutBack((progress - 0.70F) / 0.30F));
+    }
+
+    private static BedWake findNearbyBed(Minecraft minecraft) {
         BlockPos center = minecraft.player.blockPosition();
         for (int x = -3; x <= 3; x++) {
             for (int y = -2; y <= 2; y++) {
                 for (int z = -3; z <= 3; z++) {
-                    if (minecraft.level.getBlockState(center.offset(x, y, z)).getBlock() instanceof BedBlock) {
-                        return true;
+                    BlockPos position = center.offset(x, y, z);
+                    BlockState state = minecraft.level.getBlockState(position);
+                    if (state.getBlock() instanceof BedBlock) {
+                        Direction facing = state.getValue(BedBlock.FACING);
+                        BlockPos headPosition = state.getValue(BedBlock.PART) == BedPart.HEAD
+                                ? position
+                                : position.relative(facing);
+                        Direction exitSide = facing.getClockWise();
+                        return new BedWake(headPosition.immutable(), facing, exitSide);
                     }
                 }
             }
         }
-        return false;
+        return null;
     }
 
     private static boolean hasTotem(Inventory inventory) {
@@ -420,5 +466,9 @@ public final class KeepingDeathAnimation {
         animationTick = 0;
         wakeActive = false;
         wakeTick = 0;
+        bedWake = null;
+    }
+
+    private record BedWake(BlockPos headPosition, Direction facing, Direction exitSide) {
     }
 }
