@@ -2,10 +2,11 @@ package com.dlucci6.keepinventorytotem.client;
 
 import com.dlucci6.keepinventorytotem.KeepInventoryTotem;
 import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.math.Axis;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.DeathScreen;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.client.renderer.RenderType;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.player.Inventory;
@@ -19,12 +20,11 @@ import net.neoforged.neoforge.client.event.ScreenEvent;
 
 @EventBusSubscriber(modid = KeepInventoryTotem.MOD_ID, value = Dist.CLIENT)
 public final class KeepingDeathAnimation {
-    private static final ResourceLocation END_PORTAL_TEXTURE =
-            ResourceLocation.withDefaultNamespace("textures/entity/end_portal.png");
-    private static final int FLY_END = 20;
-    private static final int CRACK_END = 42;
-    private static final int PORTAL_END = 72;
-    private static final int ANIMATION_END = 92;
+    private static final int SWOOP_END = 22;
+    private static final int SETTLE_END = 32;
+    private static final int CRACK_END = 52;
+    private static final int PORTAL_END = 82;
+    private static final int ANIMATION_END = 102;
 
     private static boolean hadTotem;
     private static boolean active;
@@ -53,7 +53,7 @@ public final class KeepingDeathAnimation {
         }
 
         animationTick++;
-        if (animationTick == FLY_END) {
+        if (animationTick == SETTLE_END) {
             minecraft.player.playSound(SoundEvents.ITEM_BREAK, 1.0F, 0.65F);
         } else if (animationTick == CRACK_END) {
             minecraft.player.playSound(SoundEvents.END_PORTAL_SPAWN, 0.8F, 1.25F);
@@ -80,7 +80,7 @@ public final class KeepingDeathAnimation {
     }
 
     @SubscribeEvent
-    public static void onRenderGui(RenderGuiEvent.Post event) {
+    public static void onRenderGui(RenderGuiEvent.Pre event) {
         if (!active) {
             return;
         }
@@ -92,11 +92,11 @@ public final class KeepingDeathAnimation {
 
         graphics.fill(0, 0, width, height, 0x66000000);
 
-        if (tick >= FLY_END) {
+        if (tick >= CRACK_END) {
             renderPortal(graphics, tick, width, height);
         }
 
-        if (tick < CRACK_END + 7) {
+        if (tick < CRACK_END + 6) {
             renderTotem(graphics, tick, width, height);
         }
 
@@ -104,20 +104,41 @@ public final class KeepingDeathAnimation {
             float fade = ease((tick - PORTAL_END) / (ANIMATION_END - PORTAL_END));
             graphics.fill(0, 0, width, height, ((int)(fade * 225.0F) << 24) | 0x09000F);
         }
+
+        // The animation was rendered first; cancel the normal HUD so no hotbar,
+        // crosshair, status effects, or other vanilla UI can bleed through it.
+        event.setCanceled(true);
     }
 
     private static void renderTotem(GuiGraphics graphics, float tick, int width, int height) {
-        float fly = ease(Mth.clamp(tick / FLY_END, 0.0F, 1.0F));
-        float startX = width - 28.0F;
-        float startY = height - 28.0F;
+        float swoopTime = Mth.clamp(tick / SWOOP_END, 0.0F, 1.0F);
+        float swoop = easeOutBack(swoopTime);
+        float startX = -36.0F;
+        float startY = height + 32.0F;
         float centerX = width / 2.0F;
         float centerY = height / 2.0F;
-        float x = Mth.lerp(fly, startX, centerX);
-        float y = Mth.lerp(fly, startY, centerY);
-        float scale = Mth.lerp(fly, 1.0F, 4.0F);
+        float x = Mth.lerp(swoop, startX, centerX);
+        float y = Mth.lerp(swoop, startY, centerY)
+                - Mth.sin(swoopTime * Mth.PI) * height * 0.32F;
+        float scale = Mth.lerp(ease(swoopTime), 1.0F, 4.0F);
+        float rotation = Mth.lerp(swoop, -155.0F, 0.0F);
 
-        if (tick >= FLY_END) {
-            float crackProgress = Mth.clamp((tick - FLY_END) / (CRACK_END - FLY_END), 0.0F, 1.0F);
+        if (tick >= SWOOP_END && tick < SETTLE_END) {
+            float settle = (tick - SWOOP_END) / (SETTLE_END - SWOOP_END);
+            float damping = 1.0F - settle;
+            x = centerX + Mth.sin(settle * Mth.TWO_PI) * 7.0F * damping;
+            y = centerY + Mth.sin(settle * Mth.TWO_PI + 1.2F) * 4.0F * damping;
+            rotation = Mth.sin(settle * Mth.TWO_PI * 1.5F) * 16.0F * damping;
+            scale = 4.0F + Mth.sin(settle * Mth.PI) * 0.25F;
+        } else if (tick >= SETTLE_END) {
+            x = centerX;
+            y = centerY;
+            rotation = 0.0F;
+            scale = 4.0F;
+        }
+
+        if (tick >= SETTLE_END) {
+            float crackProgress = Mth.clamp((tick - SETTLE_END) / (CRACK_END - SETTLE_END), 0.0F, 1.0F);
             x += Mth.sin(tick * 2.7F) * crackProgress * 2.5F;
             y += Mth.cos(tick * 2.1F) * crackProgress * 1.5F;
             scale *= 1.0F + crackProgress * 0.12F;
@@ -126,17 +147,18 @@ public final class KeepingDeathAnimation {
         PoseStack pose = graphics.pose();
         pose.pushPose();
         pose.translate(x, y, 300.0F);
+        pose.mulPose(Axis.ZP.rotationDegrees(rotation));
         pose.scale(scale, scale, 1.0F);
         graphics.renderItem(new ItemStack(KeepInventoryTotem.KEEP_INVENTORY_TOTEM.get()), -8, -8);
         pose.popPose();
 
-        if (tick >= FLY_END) {
+        if (tick >= SETTLE_END) {
             renderCracks(graphics, tick, (int)x, (int)y);
         }
     }
 
     private static void renderCracks(GuiGraphics graphics, float tick, int centerX, int centerY) {
-        float progress = Mth.clamp((tick - FLY_END) / (CRACK_END - FLY_END), 0.0F, 1.0F);
+        float progress = Mth.clamp((tick - SETTLE_END) / (CRACK_END - SETTLE_END), 0.0F, 1.0F);
         int color = 0xFF2B063D;
         int length = (int)(28.0F * progress);
 
@@ -152,9 +174,9 @@ public final class KeepingDeathAnimation {
     }
 
     private static void renderPortal(GuiGraphics graphics, float tick, int width, int height) {
-        float opening = ease(Mth.clamp((tick - FLY_END) / (PORTAL_END - FLY_END), 0.0F, 1.0F));
+        float opening = ease(Mth.clamp((tick - CRACK_END) / (PORTAL_END - CRACK_END), 0.0F, 1.0F));
         float cameraFlight = ease(Mth.clamp((tick - PORTAL_END) / (ANIMATION_END - PORTAL_END), 0.0F, 1.0F));
-        int initialSize = 8;
+        int initialSize = 2;
         int openSize = (int)(Math.min(width, height) * 0.82F);
         int finalSize = (int)(Math.max(width, height) * 2.2F);
         int size = (int)Mth.lerp(cameraFlight, Mth.lerp(opening, initialSize, openSize), finalSize);
@@ -163,7 +185,7 @@ public final class KeepingDeathAnimation {
         int border = Math.max(3, size / 45);
 
         graphics.fill(x - border, y - border, x + size + border, y + size + border, 0xFF210036);
-        graphics.blit(END_PORTAL_TEXTURE, x, y, size, size, 0.0F, 0.0F, 16, 16, 16, 16);
+        graphics.fillRenderType(RenderType.endPortal(), x, y, x + size, y + size, 0);
     }
 
     private static boolean hasTotem(Inventory inventory) {
@@ -178,6 +200,14 @@ public final class KeepingDeathAnimation {
     private static float ease(float value) {
         float clamped = Mth.clamp(value, 0.0F, 1.0F);
         return clamped * clamped * (3.0F - 2.0F * clamped);
+    }
+
+    private static float easeOutBack(float value) {
+        float clamped = Mth.clamp(value, 0.0F, 1.0F);
+        float overshoot = 1.70158F;
+        float shifted = clamped - 1.0F;
+        return 1.0F + (overshoot + 1.0F) * shifted * shifted * shifted
+                + overshoot * shifted * shifted;
     }
 
     private static void reset() {

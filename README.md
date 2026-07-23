@@ -9,7 +9,8 @@ server's `keepInventory` gamerule.
 
 On death, the normal death screen is replaced by a short animation: the totem
 flies into view and cracks, an End Portal opens, and the camera appears to fly
-through it before the player automatically respawns.
+through it before the player automatically respawns. The transition hides the
+HUD and briefly applies blindness.
 
 ## Crafting
 

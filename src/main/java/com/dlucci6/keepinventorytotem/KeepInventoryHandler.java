@@ -5,6 +5,8 @@ import java.util.Map;
 import java.util.UUID;
 
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.bus.api.EventPriority;
@@ -34,6 +36,7 @@ public final class KeepInventoryHandler {
         InventorySnapshot snapshot = InventorySnapshot.capture(inventory);
         snapshot.removeOneTotem(totemSlot);
         SAVED_INVENTORIES.put(player.getUUID(), snapshot);
+        player.addEffect(new MobEffectInstance(MobEffects.BLINDNESS, 120, 0, false, false, false));
     }
 
     @SubscribeEvent
