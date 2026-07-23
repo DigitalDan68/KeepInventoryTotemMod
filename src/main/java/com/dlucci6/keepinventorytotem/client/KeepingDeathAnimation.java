@@ -187,17 +187,17 @@ public final class KeepingDeathAnimation {
     }
 
     private static void renderPortalCracks(GuiGraphics graphics, float tick, int width, int height) {
-        float progress = ease(Mth.clamp(
+        float overallProgress = Mth.clamp(
                 (tick - (SETTLE_END + 6.0F)) / (CRACK_END - SETTLE_END - 6.0F),
                 0.0F,
                 1.0F
-        ));
-        float baseLength = Math.min(width, height) * 0.34F * progress;
+        );
         float centerX = width / 2.0F;
         float centerY = height / 2.0F;
 
         for (int index = 0; index < FRACTURE_ANGLES.length; index++) {
-            float length = baseLength * FRACTURE_LENGTHS[index];
+            float progress = jerkyProgress(overallProgress, index);
+            float length = Math.min(width, height) * 0.34F * FRACTURE_LENGTHS[index] * progress;
             drawPortalFissure(graphics, centerX, centerY, FRACTURE_ANGLES[index], length, progress);
 
             if (progress > 0.42F && index % 2 == 0) {
@@ -235,29 +235,52 @@ public final class KeepingDeathAnimation {
         int visibleLength = Math.max(1, (int)length);
         int glowWidth = progress > 0.7F ? 5 : 3;
         graphics.fill(-2, -glowWidth, visibleLength + 2, glowWidth, 0xFF4C0870);
-        graphics.fillRenderType(RenderType.endPortal(), 0, -1, visibleLength, 2, 0);
+        // Portal energy is deliberately wider and rendered after the outline,
+        // making it look as though the fissure has torn through its own edge.
+        graphics.fillRenderType(RenderType.endPortal(), 0, -glowWidth - 1, visibleLength, glowWidth + 1, 0);
         pose.popPose();
     }
 
     private static void renderCrackingPortal(GuiGraphics graphics, float tick, int width, int height) {
         float openingTime = Mth.clamp((tick - CRACK_END) / (PORTAL_END - CRACK_END), 0.0F, 1.0F);
-        float opening = 1.0F - (float)Math.pow(1.0F - openingTime, 4.0);
         float cameraFlight = ease(Mth.clamp((tick - PORTAL_END) / (ANIMATION_END - PORTAL_END), 0.0F, 1.0F));
-        int initialSize = 4;
-        int openSize = (int)(Math.min(width, height) * 1.18F);
-        int finalSize = (int)(Math.max(width, height) * 3.0F);
-        int size = (int)Mth.lerp(cameraFlight, Mth.lerp(opening, initialSize, openSize), finalSize);
         int centerX = width / 2;
         int centerY = height / 2;
+        float openReach = Math.min(width, height) * 0.78F;
+        float finalReach = Math.max(width, height) * 2.2F;
+        float reach = Mth.lerp(cameraFlight, openReach, finalReach);
+
+        // Every original fissure widens at its own delayed, stepped rate. These
+        // independent portal tears are the opening; there is no portal quad behind them.
+        for (int index = 0; index < FRACTURE_ANGLES.length; index++) {
+            float progress = jerkyProgress(openingTime, index + 3);
+            renderPortalTear(
+                    graphics,
+                    centerX,
+                    centerY,
+                    FRACTURE_ANGLES[index],
+                    reach * FRACTURE_LENGTHS[index] * progress,
+                    (5.0F + reach * 0.20F * progress * progress)
+                            * (0.78F + (index % 3) * 0.13F)
+            );
+        }
+
+        // Once the tears overlap, an irregular core bridges their remaining gaps.
+        float mergeTime = Mth.clamp((openingTime - 0.38F) / 0.62F, 0.0F, 1.0F);
+        float merge = 1.0F - (float)Math.pow(1.0F - mergeTime, 3.0);
+        int size = (int)(reach * 1.45F * merge);
+        if (size < 2) {
+            return;
+        }
+
         int bandHeight = Math.max(2, size / APERTURE_JITTER.length);
         int top = centerY - (bandHeight * APERTURE_JITTER.length) / 2;
 
-        // Horizontal bands form an irregular, fractured aperture. Their uneven
-        // edges race outward from the center and merge into the camera fly-through.
         for (int band = 0; band < APERTURE_JITTER.length; band++) {
             float vertical = ((band + 0.5F) / APERTURE_JITTER.length) * 2.0F - 1.0F;
             float profile = Mth.sqrt(Math.max(0.0F, 1.0F - vertical * vertical));
-            int halfWidth = Math.max(1, (int)(size * 0.52F * profile * APERTURE_JITTER[band]));
+            float bandProgress = jerkyProgress(mergeTime, band + 11);
+            int halfWidth = Math.max(1, (int)(size * 0.52F * profile * APERTURE_JITTER[band] * bandProgress));
             int y0 = top + band * bandHeight;
             int y1 = y0 + bandHeight + 1;
             int edge = Math.max(2, size / 90);
@@ -265,6 +288,52 @@ public final class KeepingDeathAnimation {
             graphics.fill(centerX - halfWidth - edge, y0 - edge, centerX + halfWidth + edge, y1 + edge, 0xFF31004D);
             graphics.fillRenderType(RenderType.endPortal(), centerX - halfWidth, y0, centerX + halfWidth, y1, 0);
         }
+    }
+
+    private static void renderPortalTear(
+            GuiGraphics graphics,
+            float centerX,
+            float centerY,
+            float angle,
+            float length,
+            float thickness
+    ) {
+        if (length < 1.0F) {
+            return;
+        }
+
+        PoseStack pose = graphics.pose();
+        pose.pushPose();
+        pose.translate(centerX, centerY, 210.0F);
+        pose.mulPose(Axis.ZP.rotationDegrees(angle));
+
+        int totalLength = Math.max(1, (int)length);
+        for (int segment = 0; segment < 3; segment++) {
+            int x0 = totalLength * segment / 3;
+            int x1 = totalLength * (segment + 1) / 3 + 2;
+            float segmentVariation = 0.72F + ((segment * 2 + (int)Math.abs(angle)) % 4) * 0.11F;
+            int halfThickness = Math.max(2, (int)(thickness * segmentVariation));
+            int offset = segment == 1 ? (int)(thickness * 0.12F) : 0;
+
+            graphics.fill(x0 - 2, -halfThickness - 3 + offset, x1 + 2, halfThickness + 3 + offset, 0xFF390057);
+            graphics.fillRenderType(
+                    RenderType.endPortal(),
+                    x0,
+                    -halfThickness - 1 + offset,
+                    x1,
+                    halfThickness + 1 + offset,
+                    0
+            );
+        }
+        pose.popPose();
+    }
+
+    private static float jerkyProgress(float overallProgress, int index) {
+        float delayed = Mth.clamp(overallProgress * 1.22F - (index % 5) * 0.045F, 0.0F, 1.0F);
+        int steps = 4 + index % 4;
+        float stepped = (float)Math.floor(delayed * steps) / steps;
+        float kick = Mth.sin((animationTick + index * 3) * 2.35F) > 0.72F ? 0.055F : 0.0F;
+        return Mth.clamp(stepped + kick, 0.0F, 1.0F);
     }
 
     private static boolean hasTotem(Inventory inventory) {
