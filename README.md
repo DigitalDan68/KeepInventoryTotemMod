@@ -10,7 +10,8 @@ server's `keepInventory` gamerule.
 On death, the normal death screen is replaced by the vanilla item-activation
 animation for the Totem of Keeping. Radial fissures then leak animated End Portal
 energy, and each fissure widens in staggered jumps until the fractured opening
-rapidly bursts toward the camera before the player automatically respawns. The
+rapidly bursts toward the camera. The portal completes and the player respawns
+as the vanilla totem activation finishes. The
 transition hides the HUD and briefly applies blindness. If the player respawns
 beside their bed, the camera fades in with a short waking-up and getting-out motion.
 

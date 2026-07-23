@@ -23,10 +23,12 @@ import net.neoforged.neoforge.client.event.ViewportEvent;
 
 @EventBusSubscriber(modid = KeepInventoryTotem.MOD_ID, value = Dist.CLIENT)
 public final class KeepingDeathAnimation {
-    private static final int FISSURE_START = 32;
-    private static final int CRACK_END = 52;
-    private static final int PORTAL_END = 70;
-    private static final int ANIMATION_END = 90;
+    // Vanilla's item activation lasts 40 ticks. The portal now completes within
+    // that same window so respawn happens as the totem leaves the screen.
+    private static final int FISSURE_START = 6;
+    private static final int CRACK_END = 20;
+    private static final int PORTAL_END = 31;
+    private static final int ANIMATION_END = 40;
     private static final int WAKE_ANIMATION_END = 36;
     private static final float[] FRACTURE_ANGLES = {
             -168.0F, -132.0F, -101.0F, -67.0F, -31.0F, 7.0F, 43.0F, 79.0F, 116.0F, 151.0F
@@ -125,7 +127,7 @@ public final class KeepingDeathAnimation {
 
         graphics.fill(0, 0, width, height, 0x66000000);
 
-        if (tick >= FISSURE_START + 6) {
+        if (tick >= FISSURE_START) {
             renderPortalCracks(graphics, tick, width, height);
         }
 
@@ -145,7 +147,7 @@ public final class KeepingDeathAnimation {
 
     private static void renderPortalCracks(GuiGraphics graphics, float tick, int width, int height) {
         float overallProgress = Mth.clamp(
-                (tick - (FISSURE_START + 6.0F)) / (CRACK_END - FISSURE_START - 6.0F),
+                (tick - FISSURE_START) / (CRACK_END - FISSURE_START),
                 0.0F,
                 1.0F
         );
