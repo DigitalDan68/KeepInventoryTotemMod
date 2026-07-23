@@ -23,18 +23,18 @@ public final class KeepInventoryHandler {
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public static void onPlayerDeath(LivingDeathEvent event) {
-        if (!(event.getEntity() instanceof ServerPlayer player) || player.isSpectator()) {
+        if (!(event.getEntity() instanceof ServerPlayer player)
+                || player.isSpectator()
+                || SAVED_INVENTORIES.containsKey(player.getUUID())) {
             return;
         }
 
         Inventory inventory = player.getInventory();
-        int totemSlot = findTotem(inventory);
-        if (totemSlot < 0) {
+        InventorySnapshot snapshot = InventorySnapshot.captureAndConsumeOne(inventory);
+        if (snapshot == null) {
             return;
         }
 
-        InventorySnapshot snapshot = InventorySnapshot.capture(inventory);
-        snapshot.removeOneTotem(totemSlot);
         SAVED_INVENTORIES.put(player.getUUID(), snapshot);
         player.addEffect(new MobEffectInstance(MobEffects.BLINDNESS, 120, 0, false, false, false));
     }
@@ -59,26 +59,20 @@ public final class KeepInventoryHandler {
         }
     }
 
-    private static int findTotem(Inventory inventory) {
-        for (int slot = 0; slot < inventory.getContainerSize(); slot++) {
-            if (inventory.getItem(slot).is(KeepInventoryTotem.KEEP_INVENTORY_TOTEM.get())) {
-                return slot;
-            }
-        }
-        return -1;
-    }
-
     private record InventorySnapshot(ItemStack[] items) {
-        private static InventorySnapshot capture(Inventory inventory) {
+        private static InventorySnapshot captureAndConsumeOne(Inventory inventory) {
             ItemStack[] items = new ItemStack[inventory.getContainerSize()];
+            boolean consumed = false;
+
             for (int slot = 0; slot < items.length; slot++) {
                 items[slot] = inventory.getItem(slot).copy();
+                if (!consumed && items[slot].is(KeepInventoryTotem.KEEP_INVENTORY_TOTEM.get())) {
+                    items[slot].shrink(1);
+                    consumed = true;
+                }
             }
-            return new InventorySnapshot(items);
-        }
 
-        private void removeOneTotem(int slot) {
-            items[slot].shrink(1);
+            return consumed ? new InventorySnapshot(items) : null;
         }
 
         private void restore(Inventory inventory) {
