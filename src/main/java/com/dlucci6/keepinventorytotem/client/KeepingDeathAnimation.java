@@ -7,24 +7,27 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.DeathScreen;
 import net.minecraft.client.renderer.RenderType;
+import net.minecraft.core.BlockPos;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.BedBlock;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.RenderGuiEvent;
 import net.neoforged.neoforge.client.event.ScreenEvent;
+import net.neoforged.neoforge.client.event.ViewportEvent;
 
 @EventBusSubscriber(modid = KeepInventoryTotem.MOD_ID, value = Dist.CLIENT)
 public final class KeepingDeathAnimation {
-    private static final int SWOOP_END = 22;
-    private static final int SETTLE_END = 32;
+    private static final int FISSURE_START = 32;
     private static final int CRACK_END = 52;
     private static final int PORTAL_END = 70;
     private static final int ANIMATION_END = 90;
+    private static final int WAKE_ANIMATION_END = 36;
     private static final float[] FRACTURE_ANGLES = {
             -168.0F, -132.0F, -101.0F, -67.0F, -31.0F, 7.0F, 43.0F, 79.0F, 116.0F, 151.0F
     };
@@ -39,6 +42,8 @@ public final class KeepingDeathAnimation {
     private static boolean active;
     private static boolean awaitingRespawn;
     private static int animationTick;
+    private static boolean wakeActive;
+    private static int wakeTick;
 
     private KeepingDeathAnimation() {
     }
@@ -53,7 +58,16 @@ public final class KeepingDeathAnimation {
 
         if (!minecraft.player.isDeadOrDying()) {
             hadTotem = hasTotem(minecraft.player.getInventory());
-            awaitingRespawn = false;
+            if (awaitingRespawn) {
+                awaitingRespawn = false;
+                if (isNextToBed(minecraft)) {
+                    wakeActive = true;
+                    wakeTick = 0;
+                }
+            }
+            if (wakeActive && ++wakeTick >= WAKE_ANIMATION_END) {
+                wakeActive = false;
+            }
             return;
         }
 
@@ -62,9 +76,7 @@ public final class KeepingDeathAnimation {
         }
 
         animationTick++;
-        if (animationTick == SETTLE_END) {
-            minecraft.player.playSound(SoundEvents.ITEM_BREAK, 1.0F, 0.65F);
-        } else if (animationTick == CRACK_END) {
+        if (animationTick == CRACK_END) {
             minecraft.player.playSound(SoundEvents.END_PORTAL_SPAWN, 0.8F, 1.25F);
         } else if (animationTick >= ANIMATION_END) {
             active = false;
@@ -82,6 +94,13 @@ public final class KeepingDeathAnimation {
         if (!active && !awaitingRespawn) {
             active = true;
             animationTick = 0;
+            Minecraft minecraft = Minecraft.getInstance();
+            minecraft.gameRenderer.displayItemActivation(
+                    new ItemStack(KeepInventoryTotem.KEEP_INVENTORY_TOTEM.get())
+            );
+            if (minecraft.player != null) {
+                minecraft.player.playSound(SoundEvents.TOTEM_USE, 1.0F, 1.0F);
+            }
         }
 
         // A null replacement closes any previous UI while preventing the death screen.
@@ -90,6 +109,11 @@ public final class KeepingDeathAnimation {
 
     @SubscribeEvent
     public static void onRenderGui(RenderGuiEvent.Pre event) {
+        if (wakeActive) {
+            renderWakeOverlay(event);
+            return;
+        }
+
         if (!active) {
             return;
         }
@@ -101,16 +125,12 @@ public final class KeepingDeathAnimation {
 
         graphics.fill(0, 0, width, height, 0x66000000);
 
-        if (tick >= SETTLE_END + 6) {
+        if (tick >= FISSURE_START + 6) {
             renderPortalCracks(graphics, tick, width, height);
         }
 
         if (tick >= CRACK_END) {
             renderCrackingPortal(graphics, tick, width, height);
-        }
-
-        if (tick < CRACK_END + 6) {
-            renderTotem(graphics, tick, width, height);
         }
 
         if (tick >= PORTAL_END) {
@@ -123,72 +143,9 @@ public final class KeepingDeathAnimation {
         event.setCanceled(true);
     }
 
-    private static void renderTotem(GuiGraphics graphics, float tick, int width, int height) {
-        float swoopTime = Mth.clamp(tick / SWOOP_END, 0.0F, 1.0F);
-        float swoop = easeOutBack(swoopTime);
-        float startX = -36.0F;
-        float startY = height + 32.0F;
-        float centerX = width / 2.0F;
-        float centerY = height / 2.0F;
-        float x = Mth.lerp(swoop, startX, centerX);
-        float y = Mth.lerp(swoop, startY, centerY)
-                - Mth.sin(swoopTime * Mth.PI) * height * 0.32F;
-        float scale = Mth.lerp(ease(swoopTime), 1.0F, 4.0F);
-        float rotation = Mth.lerp(swoop, -155.0F, 0.0F);
-
-        if (tick >= SWOOP_END && tick < SETTLE_END) {
-            float settle = (tick - SWOOP_END) / (SETTLE_END - SWOOP_END);
-            float damping = 1.0F - settle;
-            x = centerX + Mth.sin(settle * Mth.TWO_PI) * 7.0F * damping;
-            y = centerY + Mth.sin(settle * Mth.TWO_PI + 1.2F) * 4.0F * damping;
-            rotation = Mth.sin(settle * Mth.TWO_PI * 1.5F) * 16.0F * damping;
-            scale = 4.0F + Mth.sin(settle * Mth.PI) * 0.25F;
-        } else if (tick >= SETTLE_END) {
-            x = centerX;
-            y = centerY;
-            rotation = 0.0F;
-            scale = 4.0F;
-        }
-
-        if (tick >= SETTLE_END) {
-            float crackProgress = Mth.clamp((tick - SETTLE_END) / (CRACK_END - SETTLE_END), 0.0F, 1.0F);
-            x += Mth.sin(tick * 2.7F) * crackProgress * 2.5F;
-            y += Mth.cos(tick * 2.1F) * crackProgress * 1.5F;
-            scale *= 1.0F + crackProgress * 0.12F;
-        }
-
-        PoseStack pose = graphics.pose();
-        pose.pushPose();
-        pose.translate(x, y, 300.0F);
-        pose.mulPose(Axis.ZP.rotationDegrees(rotation));
-        pose.scale(scale, scale, 1.0F);
-        graphics.renderItem(new ItemStack(KeepInventoryTotem.KEEP_INVENTORY_TOTEM.get()), -8, -8);
-        pose.popPose();
-
-        if (tick >= SETTLE_END) {
-            renderCracks(graphics, tick, (int)x, (int)y);
-        }
-    }
-
-    private static void renderCracks(GuiGraphics graphics, float tick, int centerX, int centerY) {
-        float progress = Mth.clamp((tick - SETTLE_END) / (CRACK_END - SETTLE_END), 0.0F, 1.0F);
-        int color = 0xFF2B063D;
-        int length = (int)(28.0F * progress);
-
-        graphics.fill(centerX - 1, centerY - length, centerX + 2, centerY + length, color);
-        if (progress > 0.25F) {
-            graphics.fill(centerX - length, centerY - 10, centerX, centerY - 7, color);
-            graphics.fill(centerX, centerY + 8, centerX + length, centerY + 11, color);
-        }
-        if (progress > 0.55F) {
-            graphics.fill(centerX - 18, centerY - 19, centerX - 15, centerY - 7, color);
-            graphics.fill(centerX + 14, centerY + 9, centerX + 17, centerY + 23, color);
-        }
-    }
-
     private static void renderPortalCracks(GuiGraphics graphics, float tick, int width, int height) {
         float overallProgress = Mth.clamp(
-                (tick - (SETTLE_END + 6.0F)) / (CRACK_END - SETTLE_END - 6.0F),
+                (tick - (FISSURE_START + 6.0F)) / (CRACK_END - FISSURE_START - 6.0F),
                 0.0F,
                 1.0F
         );
@@ -336,6 +293,50 @@ public final class KeepingDeathAnimation {
         return Mth.clamp(stepped + kick, 0.0F, 1.0F);
     }
 
+    @SubscribeEvent
+    public static void onCameraAngles(ViewportEvent.ComputeCameraAngles event) {
+        if (!wakeActive) {
+            return;
+        }
+
+        float progress = easeOutBack(Mth.clamp(
+                (wakeTick + (float)event.getPartialTick()) / WAKE_ANIMATION_END,
+                0.0F,
+                1.0F
+        ));
+        event.setRoll(Mth.lerp(progress, 82.0F, 0.0F));
+        event.setPitch(Mth.lerp(progress, 28.0F, event.getPitch()));
+        event.setYaw(event.getYaw() + Mth.sin(progress * Mth.PI) * 9.0F);
+    }
+
+    private static void renderWakeOverlay(RenderGuiEvent.Pre event) {
+        float progress = ease(Mth.clamp(
+                (wakeTick + event.getPartialTick().getGameTimeDeltaTicks()) / WAKE_ANIMATION_END,
+                0.0F,
+                1.0F
+        ));
+        int alpha = (int)((1.0F - progress) * 255.0F);
+        if (alpha > 0) {
+            GuiGraphics graphics = event.getGuiGraphics();
+            graphics.fill(0, 0, graphics.guiWidth(), graphics.guiHeight(), alpha << 24);
+        }
+        event.setCanceled(true);
+    }
+
+    private static boolean isNextToBed(Minecraft minecraft) {
+        BlockPos center = minecraft.player.blockPosition();
+        for (int x = -3; x <= 3; x++) {
+            for (int y = -2; y <= 2; y++) {
+                for (int z = -3; z <= 3; z++) {
+                    if (minecraft.level.getBlockState(center.offset(x, y, z)).getBlock() instanceof BedBlock) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
     private static boolean hasTotem(Inventory inventory) {
         for (int slot = 0; slot < inventory.getContainerSize(); slot++) {
             if (inventory.getItem(slot).is(KeepInventoryTotem.KEEP_INVENTORY_TOTEM.get())) {
@@ -363,5 +364,7 @@ public final class KeepingDeathAnimation {
         active = false;
         awaitingRespawn = false;
         animationTick = 0;
+        wakeActive = false;
+        wakeTick = 0;
     }
 }

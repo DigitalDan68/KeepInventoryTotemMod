@@ -7,10 +7,12 @@ armor or offhand slots), exactly one totem is consumed and their full inventory 
 respawning. The effect applies only to that player and does not change the
 server's `keepInventory` gamerule.
 
-On death, the normal death screen is replaced by a short animation: the totem
-flies into view and cracks, radial fissures leak animated End Portal energy, and
-each fissure widens in staggered jumps until the fractured opening rapidly bursts toward the camera before the player
-automatically respawns. The transition hides the HUD and briefly applies blindness.
+On death, the normal death screen is replaced by the vanilla item-activation
+animation for the Totem of Keeping. Radial fissures then leak animated End Portal
+energy, and each fissure widens in staggered jumps until the fractured opening
+rapidly bursts toward the camera before the player automatically respawns. The
+transition hides the HUD and briefly applies blindness. If the player respawns
+beside their bed, the camera fades in with a short waking-up and getting-out motion.
 
 ## Crafting
 
