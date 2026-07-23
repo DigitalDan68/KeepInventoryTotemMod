@@ -7,10 +7,12 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.DeathScreen;
 import net.minecraft.client.renderer.RenderType;
+import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.core.BlockPos;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.BedBlock;
 import net.neoforged.api.distmarker.Dist;
@@ -46,6 +48,8 @@ public final class KeepingDeathAnimation {
     private static int animationTick;
     private static boolean wakeActive;
     private static int wakeTick;
+    private static float activationOffsetX;
+    private static float activationOffsetY;
 
     private KeepingDeathAnimation() {
     }
@@ -97,10 +101,9 @@ public final class KeepingDeathAnimation {
             active = true;
             animationTick = 0;
             Minecraft minecraft = Minecraft.getInstance();
-            minecraft.gameRenderer.displayItemActivation(
-                    new ItemStack(KeepInventoryTotem.KEEP_INVENTORY_TOTEM.get())
-            );
             if (minecraft.player != null) {
+                activationOffsetX = minecraft.player.getRandom().nextFloat() * 2.0F - 1.0F;
+                activationOffsetY = minecraft.player.getRandom().nextFloat() * 2.0F - 1.0F;
                 minecraft.player.playSound(SoundEvents.TOTEM_USE, 1.0F, 1.0F);
             }
         }
@@ -140,9 +143,53 @@ public final class KeepingDeathAnimation {
             graphics.fill(0, 0, width, height, ((int)(fade * 225.0F) << 24) | 0x09000F);
         }
 
+        // Vanilla normally draws item activation before the HUD. Replaying its
+        // exact transform here preserves the animation while compositing it last.
+        renderVanillaTotemActivation(graphics, tick);
+
         // The animation was rendered first; cancel the normal HUD so no hotbar,
         // crosshair, status effects, or other vanilla UI can bleed through it.
         event.setCanceled(true);
+    }
+
+    private static void renderVanillaTotemActivation(GuiGraphics graphics, float tick) {
+        Minecraft minecraft = Minecraft.getInstance();
+        float progress = Mth.clamp(tick / 40.0F, 0.0F, 1.0F);
+        float squared = progress * progress;
+        float cubed = progress * squared;
+        float curve = 10.25F * cubed * squared
+                - 24.95F * squared * squared
+                + 25.5F * cubed
+                - 13.8F * squared
+                + 4.0F * progress;
+        float angle = curve * Mth.PI;
+        float offsetX = activationOffsetX * (graphics.guiWidth() / 4.0F);
+        float offsetY = activationOffsetY * (graphics.guiHeight() / 4.0F);
+
+        PoseStack itemPose = new PoseStack();
+        itemPose.pushPose();
+        itemPose.translate(
+                graphics.guiWidth() / 2.0F + offsetX * Mth.abs(Mth.sin(angle * 2.0F)),
+                graphics.guiHeight() / 2.0F + offsetY * Mth.abs(Mth.sin(angle * 2.0F)),
+                -50.0F
+        );
+        float scale = 50.0F + 175.0F * Mth.sin(angle);
+        itemPose.scale(scale, -scale, scale);
+        itemPose.mulPose(Axis.YP.rotationDegrees(900.0F * Mth.abs(Mth.sin(angle))));
+        itemPose.mulPose(Axis.XP.rotationDegrees(6.0F * Mth.cos(progress * 8.0F)));
+        itemPose.mulPose(Axis.ZP.rotationDegrees(6.0F * Mth.cos(progress * 8.0F)));
+
+        graphics.drawManaged(() -> minecraft.getItemRenderer().renderStatic(
+                new ItemStack(KeepInventoryTotem.KEEP_INVENTORY_TOTEM.get()),
+                ItemDisplayContext.FIXED,
+                15728880,
+                OverlayTexture.NO_OVERLAY,
+                itemPose,
+                graphics.bufferSource(),
+                minecraft.level,
+                0
+        ));
+        itemPose.popPose();
     }
 
     private static void renderPortalCracks(GuiGraphics graphics, float tick, int width, int height) {

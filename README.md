@@ -8,7 +8,7 @@ respawning. The effect applies only to that player and does not change the
 server's `keepInventory` gamerule.
 
 On death, the normal death screen is replaced by the vanilla item-activation
-animation for the Totem of Keeping. Radial fissures then leak animated End Portal
+animation for the Totem of Keeping, composited above the portal effect. Radial fissures then leak animated End Portal
 energy, and each fissure widens in staggered jumps until the fractured opening
 rapidly bursts toward the camera. The portal completes and the player respawns
 as the vanilla totem activation finishes. The
