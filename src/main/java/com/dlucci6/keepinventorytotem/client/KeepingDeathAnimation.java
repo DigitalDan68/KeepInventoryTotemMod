@@ -23,8 +23,17 @@ public final class KeepingDeathAnimation {
     private static final int SWOOP_END = 22;
     private static final int SETTLE_END = 32;
     private static final int CRACK_END = 52;
-    private static final int PORTAL_END = 82;
-    private static final int ANIMATION_END = 102;
+    private static final int PORTAL_END = 70;
+    private static final int ANIMATION_END = 90;
+    private static final float[] FRACTURE_ANGLES = {
+            -168.0F, -132.0F, -101.0F, -67.0F, -31.0F, 7.0F, 43.0F, 79.0F, 116.0F, 151.0F
+    };
+    private static final float[] FRACTURE_LENGTHS = {
+            0.78F, 1.0F, 0.72F, 0.91F, 0.66F, 0.96F, 0.75F, 0.88F, 0.70F, 0.84F
+    };
+    private static final float[] APERTURE_JITTER = {
+            0.72F, 0.90F, 0.83F, 1.00F, 0.92F, 1.04F, 0.95F, 1.01F, 0.86F, 0.93F, 0.76F
+    };
 
     private static boolean hadTotem;
     private static boolean active;
@@ -92,8 +101,12 @@ public final class KeepingDeathAnimation {
 
         graphics.fill(0, 0, width, height, 0x66000000);
 
+        if (tick >= SETTLE_END + 6) {
+            renderPortalCracks(graphics, tick, width, height);
+        }
+
         if (tick >= CRACK_END) {
-            renderPortal(graphics, tick, width, height);
+            renderCrackingPortal(graphics, tick, width, height);
         }
 
         if (tick < CRACK_END + 6) {
@@ -173,19 +186,85 @@ public final class KeepingDeathAnimation {
         }
     }
 
-    private static void renderPortal(GuiGraphics graphics, float tick, int width, int height) {
-        float opening = ease(Mth.clamp((tick - CRACK_END) / (PORTAL_END - CRACK_END), 0.0F, 1.0F));
-        float cameraFlight = ease(Mth.clamp((tick - PORTAL_END) / (ANIMATION_END - PORTAL_END), 0.0F, 1.0F));
-        int initialSize = 2;
-        int openSize = (int)(Math.min(width, height) * 0.82F);
-        int finalSize = (int)(Math.max(width, height) * 2.2F);
-        int size = (int)Mth.lerp(cameraFlight, Mth.lerp(opening, initialSize, openSize), finalSize);
-        int x = (width - size) / 2;
-        int y = (height - size) / 2;
-        int border = Math.max(3, size / 45);
+    private static void renderPortalCracks(GuiGraphics graphics, float tick, int width, int height) {
+        float progress = ease(Mth.clamp(
+                (tick - (SETTLE_END + 6.0F)) / (CRACK_END - SETTLE_END - 6.0F),
+                0.0F,
+                1.0F
+        ));
+        float baseLength = Math.min(width, height) * 0.34F * progress;
+        float centerX = width / 2.0F;
+        float centerY = height / 2.0F;
 
-        graphics.fill(x - border, y - border, x + size + border, y + size + border, 0xFF210036);
-        graphics.fillRenderType(RenderType.endPortal(), x, y, x + size, y + size, 0);
+        for (int index = 0; index < FRACTURE_ANGLES.length; index++) {
+            float length = baseLength * FRACTURE_LENGTHS[index];
+            drawPortalFissure(graphics, centerX, centerY, FRACTURE_ANGLES[index], length, progress);
+
+            if (progress > 0.42F && index % 2 == 0) {
+                float branchStart = length * 0.55F;
+                float branchLength = length * 0.32F * ((progress - 0.42F) / 0.58F);
+                drawPortalFissure(
+                        graphics,
+                        centerX + Mth.cos(FRACTURE_ANGLES[index] * Mth.DEG_TO_RAD) * branchStart,
+                        centerY + Mth.sin(FRACTURE_ANGLES[index] * Mth.DEG_TO_RAD) * branchStart,
+                        FRACTURE_ANGLES[index] + (index % 4 == 0 ? 38.0F : -35.0F),
+                        branchLength,
+                        progress
+                );
+            }
+        }
+    }
+
+    private static void drawPortalFissure(
+            GuiGraphics graphics,
+            float startX,
+            float startY,
+            float angle,
+            float length,
+            float progress
+    ) {
+        if (length < 1.0F) {
+            return;
+        }
+
+        PoseStack pose = graphics.pose();
+        pose.pushPose();
+        pose.translate(startX, startY, 190.0F);
+        pose.mulPose(Axis.ZP.rotationDegrees(angle));
+
+        int visibleLength = Math.max(1, (int)length);
+        int glowWidth = progress > 0.7F ? 5 : 3;
+        graphics.fill(-2, -glowWidth, visibleLength + 2, glowWidth, 0xFF4C0870);
+        graphics.fillRenderType(RenderType.endPortal(), 0, -1, visibleLength, 2, 0);
+        pose.popPose();
+    }
+
+    private static void renderCrackingPortal(GuiGraphics graphics, float tick, int width, int height) {
+        float openingTime = Mth.clamp((tick - CRACK_END) / (PORTAL_END - CRACK_END), 0.0F, 1.0F);
+        float opening = 1.0F - (float)Math.pow(1.0F - openingTime, 4.0);
+        float cameraFlight = ease(Mth.clamp((tick - PORTAL_END) / (ANIMATION_END - PORTAL_END), 0.0F, 1.0F));
+        int initialSize = 4;
+        int openSize = (int)(Math.min(width, height) * 1.18F);
+        int finalSize = (int)(Math.max(width, height) * 3.0F);
+        int size = (int)Mth.lerp(cameraFlight, Mth.lerp(opening, initialSize, openSize), finalSize);
+        int centerX = width / 2;
+        int centerY = height / 2;
+        int bandHeight = Math.max(2, size / APERTURE_JITTER.length);
+        int top = centerY - (bandHeight * APERTURE_JITTER.length) / 2;
+
+        // Horizontal bands form an irregular, fractured aperture. Their uneven
+        // edges race outward from the center and merge into the camera fly-through.
+        for (int band = 0; band < APERTURE_JITTER.length; band++) {
+            float vertical = ((band + 0.5F) / APERTURE_JITTER.length) * 2.0F - 1.0F;
+            float profile = Mth.sqrt(Math.max(0.0F, 1.0F - vertical * vertical));
+            int halfWidth = Math.max(1, (int)(size * 0.52F * profile * APERTURE_JITTER[band]));
+            int y0 = top + band * bandHeight;
+            int y1 = y0 + bandHeight + 1;
+            int edge = Math.max(2, size / 90);
+
+            graphics.fill(centerX - halfWidth - edge, y0 - edge, centerX + halfWidth + edge, y1 + edge, 0xFF31004D);
+            graphics.fillRenderType(RenderType.endPortal(), centerX - halfWidth, y0, centerX + halfWidth, y1, 0);
+        }
     }
 
     private static boolean hasTotem(Inventory inventory) {

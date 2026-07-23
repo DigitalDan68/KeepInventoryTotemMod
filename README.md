@@ -8,9 +8,9 @@ respawning. The effect applies only to that player and does not change the
 server's `keepInventory` gamerule.
 
 On death, the normal death screen is replaced by a short animation: the totem
-flies into view and cracks, an End Portal opens, and the camera appears to fly
-through it before the player automatically respawns. The transition hides the
-HUD and briefly applies blindness.
+flies into view and cracks, radial fissures leak animated End Portal energy, and
+the fractured opening rapidly bursts toward the camera before the player
+automatically respawns. The transition hides the HUD and briefly applies blindness.
 
 ## Crafting
 
