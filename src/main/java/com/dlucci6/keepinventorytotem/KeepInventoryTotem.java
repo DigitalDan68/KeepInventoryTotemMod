@@ -2,6 +2,7 @@ package com.dlucci6.keepinventorytotem;
 
 import net.minecraft.world.item.CreativeModeTabs;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Rarity;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
@@ -17,7 +18,7 @@ public final class KeepInventoryTotem {
     public static final DeferredRegister.Items ITEMS = DeferredRegister.createItems(MOD_ID);
     public static final DeferredItem<Item> KEEP_INVENTORY_TOTEM = ITEMS.registerSimpleItem(
             "keep_inventory_totem",
-            new Item.Properties().stacksTo(1).fireResistant()
+            new Item.Properties().stacksTo(1).fireResistant().rarity(Rarity.EPIC)
     );
 
     public KeepInventoryTotem(IEventBus modEventBus, ModContainer modContainer) {
