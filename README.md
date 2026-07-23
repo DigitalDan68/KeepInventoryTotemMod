@@ -17,6 +17,28 @@ beside their bed, the camera fades in with a short waking-up and getting-out mot
 It begins at mattress height looking down, sits upright, turns toward the side of
 the bed, and rises into the normal standing camera position.
 
+## Blockbench camera animations
+
+The mod includes a first-person camera animation API for future Blockbench clips.
+Export a Blockbench animation JSON containing a bone named `camera`, then place it
+at:
+
+`assets/<namespace>/camera_animations/<name>.animation.json`
+
+Play it from client code with:
+
+```java
+FirstPersonCameraAnimations.play(
+    ResourceLocation.fromNamespaceAndPath("keepinventorytotem", "bed_wake"),
+    "animation.bed_wake"
+);
+```
+
+Camera position keyframes use Blockbench pixels and are converted to blocks.
+Coordinates are local to the view (`+X` right, `+Y` up, `+Z` forward), while
+rotation keyframes map to pitch, yaw, and roll. Clips are optional and layer on
+top of the current procedural animations.
+
 ## Crafting
 
 Craft it with a Totem of Undying in the center, Ender Chests on the four cardinal

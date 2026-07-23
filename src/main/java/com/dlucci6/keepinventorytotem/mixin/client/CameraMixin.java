@@ -30,7 +30,7 @@ public abstract class CameraMixin {
         }
 
         Camera camera = (Camera)(Object)this;
-        Vec3 wakePosition = KeepingDeathAnimation.getBedWakeCameraPosition(camera.getPosition(), partialTick);
+        Vec3 wakePosition = KeepingDeathAnimation.getCameraAnimationPosition(camera, partialTick);
         if (wakePosition != null) {
             setPosition(wakePosition);
         }

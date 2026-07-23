@@ -1,5 +1,6 @@
 package com.dlucci6.keepinventorytotem;
 
+import com.mojang.logging.LogUtils;
 import net.minecraft.world.item.CreativeModeTabs;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Rarity;
@@ -10,10 +11,12 @@ import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;
 import net.neoforged.neoforge.registries.DeferredItem;
 import net.neoforged.neoforge.registries.DeferredRegister;
+import org.slf4j.Logger;
 
 @Mod(KeepInventoryTotem.MOD_ID)
 public final class KeepInventoryTotem {
     public static final String MOD_ID = "keepinventorytotem";
+    public static final Logger LOGGER = LogUtils.getLogger();
 
     public static final DeferredRegister.Items ITEMS = DeferredRegister.createItems(MOD_ID);
     public static final DeferredItem<Item> KEEP_INVENTORY_TOTEM = ITEMS.registerSimpleItem(

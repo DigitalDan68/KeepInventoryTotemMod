@@ -1,9 +1,12 @@
 package com.dlucci6.keepinventorytotem.client;
 
 import com.dlucci6.keepinventorytotem.KeepInventoryTotem;
+import com.dlucci6.keepinventorytotem.client.animation.CameraTransform;
+import com.dlucci6.keepinventorytotem.client.animation.FirstPersonCameraAnimations;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
+import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.DeathScreen;
@@ -62,6 +65,7 @@ public final class KeepingDeathAnimation {
 
     @SubscribeEvent
     public static void onClientTick(ClientTickEvent.Post event) {
+        FirstPersonCameraAnimations.tick();
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.player == null || minecraft.level == null) {
             reset();
@@ -355,28 +359,31 @@ public final class KeepingDeathAnimation {
 
     @SubscribeEvent
     public static void onCameraAngles(ViewportEvent.ComputeCameraAngles event) {
-        if (!wakeActive) {
-            return;
+        if (wakeActive) {
+            float progress = easeOutBack(Mth.clamp(
+                    (wakeTick + (float)event.getPartialTick()) / WAKE_ANIMATION_END,
+                    0.0F,
+                    1.0F
+            ));
+            float sitProgress = ease(Mth.clamp(progress / 0.42F, 0.0F, 1.0F));
+            float turnProgress = ease(Mth.clamp((progress - 0.42F) / 0.28F, 0.0F, 1.0F));
+            float standProgress = ease(Mth.clamp((progress - 0.70F) / 0.30F, 0.0F, 1.0F));
+            float bedYaw = bedWake.facing().toYRot() - 180.0F;
+            float sideYaw = bedWake.exitSide().toYRot() - 180.0F;
+
+            event.setRoll(Mth.lerp(sitProgress, 7.0F, 0.0F));
+            event.setPitch(progress < 0.42F
+                    ? Mth.lerp(sitProgress, 78.0F, 4.0F)
+                    : Mth.lerp(standProgress, 4.0F, event.getPitch()));
+            event.setYaw(progress < 0.42F
+                    ? bedYaw
+                    : Mth.lerp(standProgress, Mth.lerp(turnProgress, bedYaw, sideYaw), event.getYaw()));
         }
 
-        float progress = easeOutBack(Mth.clamp(
-                (wakeTick + (float)event.getPartialTick()) / WAKE_ANIMATION_END,
-                0.0F,
-                1.0F
-        ));
-        float sitProgress = ease(Mth.clamp(progress / 0.42F, 0.0F, 1.0F));
-        float turnProgress = ease(Mth.clamp((progress - 0.42F) / 0.28F, 0.0F, 1.0F));
-        float standProgress = ease(Mth.clamp((progress - 0.70F) / 0.30F, 0.0F, 1.0F));
-        float bedYaw = bedWake.facing().toYRot() - 180.0F;
-        float sideYaw = bedWake.exitSide().toYRot() - 180.0F;
-
-        event.setRoll(Mth.lerp(sitProgress, 7.0F, 0.0F));
-        event.setPitch(progress < 0.42F
-                ? Mth.lerp(sitProgress, 78.0F, 4.0F)
-                : Mth.lerp(standProgress, 4.0F, event.getPitch()));
-        event.setYaw(progress < 0.42F
-                ? bedYaw
-                : Mth.lerp(standProgress, Mth.lerp(turnProgress, bedYaw, sideYaw), event.getYaw()));
+        CameraTransform transform = FirstPersonCameraAnimations.sample((float)event.getPartialTick());
+        event.setPitch(event.getPitch() + (float)transform.rotation().x);
+        event.setYaw(event.getYaw() + (float)transform.rotation().y);
+        event.setRoll(event.getRoll() + (float)transform.rotation().z);
     }
 
     private static void renderWakeOverlay(RenderGuiEvent.Pre event) {
@@ -393,11 +400,24 @@ public final class KeepingDeathAnimation {
         event.setCanceled(true);
     }
 
-    public static Vec3 getBedWakeCameraPosition(Vec3 standingPosition, float partialTick) {
-        if (!wakeActive || bedWake == null) {
+    public static Vec3 getCameraAnimationPosition(Camera camera, float partialTick) {
+        Vec3 basePosition = proceduralBedWakePosition(camera.getPosition(), partialTick);
+        CameraTransform transform = FirstPersonCameraAnimations.sample(partialTick);
+        if (!wakeActive && !FirstPersonCameraAnimations.isPlaying()) {
             return null;
         }
 
+        Vec3 local = transform.position();
+        Vec3 right = new Vec3(camera.getLeftVector()).scale(-local.x);
+        Vec3 up = new Vec3(camera.getUpVector()).scale(local.y);
+        Vec3 forward = new Vec3(camera.getLookVector()).scale(local.z);
+        return basePosition.add(right).add(up).add(forward);
+    }
+
+    private static Vec3 proceduralBedWakePosition(Vec3 standingPosition, float partialTick) {
+        if (!wakeActive || bedWake == null) {
+            return standingPosition;
+        }
         float progress = Mth.clamp((wakeTick + partialTick) / WAKE_ANIMATION_END, 0.0F, 1.0F);
         Vec3 lying = Vec3.atBottomCenterOf(bedWake.headPosition()).add(0.0, 0.72, 0.0);
         Vec3 seated = lying.add(0.0, 0.78, 0.0);
@@ -467,6 +487,7 @@ public final class KeepingDeathAnimation {
         wakeActive = false;
         wakeTick = 0;
         bedWake = null;
+        FirstPersonCameraAnimations.stop();
     }
 
     private record BedWake(BlockPos headPosition, Direction facing, Direction exitSide) {
