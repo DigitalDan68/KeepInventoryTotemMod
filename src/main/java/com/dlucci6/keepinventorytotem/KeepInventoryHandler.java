@@ -1,0 +1,89 @@
+package com.dlucci6.keepinventorytotem;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.item.ItemStack;
+import net.neoforged.bus.api.EventPriority;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.neoforge.event.entity.living.LivingDeathEvent;
+import net.neoforged.neoforge.event.entity.living.LivingDropsEvent;
+import net.neoforged.neoforge.event.entity.player.PlayerEvent;
+
+public final class KeepInventoryHandler {
+    private static final Map<UUID, InventorySnapshot> SAVED_INVENTORIES = new HashMap<>();
+
+    private KeepInventoryHandler() {
+    }
+
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    public static void onPlayerDeath(LivingDeathEvent event) {
+        if (!(event.getEntity() instanceof ServerPlayer player) || player.isSpectator()) {
+            return;
+        }
+
+        Inventory inventory = player.getInventory();
+        int totemSlot = findTotem(inventory);
+        if (totemSlot < 0) {
+            return;
+        }
+
+        InventorySnapshot snapshot = InventorySnapshot.capture(inventory);
+        snapshot.removeOneTotem(totemSlot);
+        SAVED_INVENTORIES.put(player.getUUID(), snapshot);
+    }
+
+    @SubscribeEvent
+    public static void onPlayerDrops(LivingDropsEvent event) {
+        if (event.getEntity() instanceof ServerPlayer player
+                && SAVED_INVENTORIES.containsKey(player.getUUID())) {
+            event.setCanceled(true);
+        }
+    }
+
+    @SubscribeEvent
+    public static void onPlayerClone(PlayerEvent.Clone event) {
+        if (!event.isWasDeath() || !(event.getEntity() instanceof ServerPlayer newPlayer)) {
+            return;
+        }
+
+        InventorySnapshot snapshot = SAVED_INVENTORIES.remove(newPlayer.getUUID());
+        if (snapshot != null) {
+            snapshot.restore(newPlayer.getInventory());
+        }
+    }
+
+    private static int findTotem(Inventory inventory) {
+        for (int slot = 0; slot < inventory.getContainerSize(); slot++) {
+            if (inventory.getItem(slot).is(KeepInventoryTotem.KEEP_INVENTORY_TOTEM.get())) {
+                return slot;
+            }
+        }
+        return -1;
+    }
+
+    private record InventorySnapshot(ItemStack[] items) {
+        private static InventorySnapshot capture(Inventory inventory) {
+            ItemStack[] items = new ItemStack[inventory.getContainerSize()];
+            for (int slot = 0; slot < items.length; slot++) {
+                items[slot] = inventory.getItem(slot).copy();
+            }
+            return new InventorySnapshot(items);
+        }
+
+        private void removeOneTotem(int slot) {
+            items[slot].shrink(1);
+        }
+
+        private void restore(Inventory inventory) {
+            inventory.clearContent();
+            for (int slot = 0; slot < items.length; slot++) {
+                inventory.setItem(slot, items[slot].copy());
+            }
+            inventory.setChanged();
+        }
+    }
+}

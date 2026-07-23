@@ -1,0 +1,24 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "D": {
+      "item": "minecraft:diamond"
+    },
+    "E": {
+      "item": "minecraft:ender_chest"
+    },
+    "T": {
+      "item": "minecraft:totem_of_undying"
+    }
+  },
+  "pattern": [
+    "DED",
+    "ETE",
+    "DED"
+  ],
+  "result": {
+    "count": 1,
+    "id": "keepinventorytotem:keep_inventory_totem"
+  }
+}
