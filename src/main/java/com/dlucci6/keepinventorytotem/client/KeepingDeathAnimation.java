@@ -1,6 +1,7 @@
 package com.dlucci6.keepinventorytotem.client;
 
 import com.dlucci6.keepinventorytotem.KeepInventoryTotem;
+import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
 import net.minecraft.client.Minecraft;
@@ -145,6 +146,10 @@ public final class KeepingDeathAnimation {
 
         // Vanilla normally draws item activation before the HUD. Replaying its
         // exact transform here preserves the animation while compositing it last.
+        // End Portal geometry writes depth, so flush it and clear depth only;
+        // its color remains visible while the complete item can render above it.
+        graphics.flush();
+        RenderSystem.clear(256, Minecraft.ON_OSX);
         renderVanillaTotemActivation(graphics, tick);
 
         // The animation was rendered first; cancel the normal HUD so no hotbar,
